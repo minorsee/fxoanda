@@ -1,0 +1,392 @@
+#!/usr/bin/env python3
+"""
+Streamlit Live Trading Signals Dashboard
+"""
+
+import streamlit as st
+import sys
+import os
+import pandas as pd
+from datetime import datetime, timedelta
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import time
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Set page config
+st.set_page_config(
+    page_title="Live Trading Signals",
+    page_icon="📈",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Custom CSS for better styling
+st.markdown("""
+<style>
+.big-font {
+    font-size: 24px !important;
+    font-weight: bold;
+}
+.metric-card {
+    background-color: #f0f2f6;
+    padding: 10px;
+    border-radius: 10px;
+    margin: 5px 0;
+}
+.signal-bullish {
+    color: #26a69a;
+    font-weight: bold;
+}
+.signal-bearish {
+    color: #ef5350;
+    font-weight: bold;
+}
+.signal-neutral {
+    color: #757575;
+    font-weight: bold;
+}
+</style>
+""", unsafe_allow_html=True)
+
+@st.cache_data(ttl=300)  # Cache for 5 minutes
+def get_live_signals_data(instrument="USD_JPY"):
+    """Get current trading signals for an instrument with caching"""
+    
+    try:
+        # Import here to avoid circular imports and allow for secrets
+        from strategy_modules.zone_trader import ZoneTrader
+        
+        # Create trader instance
+        trader = ZoneTrader()
+        
+        # Run the analysis
+        results = trader.run_analysis(instrument)
+        
+        if not results:
+            return None
+        
+        return results
+        
+    except Exception as e:
+        st.error(f"❌ Error getting signals: {e}")
+        return None
+
+def create_price_chart(mtf_data, instrument):
+    """Create interactive price chart using Plotly"""
+    
+    if not mtf_data or 'h1' not in mtf_data:
+        return None
+    
+    df = mtf_data['h1'].tail(100)  # Last 100 H1 candles
+    
+    # Create candlestick chart
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.1,
+        subplot_titles=[f"{instrument} - H1 Chart", "Volume"],
+        row_width=[0.7, 0.3]
+    )
+    
+    # Add candlestick
+    fig.add_trace(
+        go.Candlestick(
+            x=df.index,
+            open=df['open'],
+            high=df['high'],
+            low=df['low'],
+            close=df['close'],
+            name="Price",
+            increasing_line_color='#26a69a',
+            decreasing_line_color='#ef5350'
+        ),
+        row=1, col=1
+    )
+    
+    # Add moving averages if available
+    if 'fast_ma' in df.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=df.index,
+                y=df['fast_ma'],
+                name="Fast MA",
+                line=dict(color='yellow', width=1)
+            ),
+            row=1, col=1
+        )
+    
+    if 'slow_ma' in df.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=df.index,
+                y=df['slow_ma'],
+                name="Slow MA",
+                line=dict(color='blue', width=1)
+            ),
+            row=1, col=1
+        )
+    
+    # Add volume if available
+    if 'volume' in df.columns and df['volume'].sum() > 0:
+        colors = ['#26a69a' if close >= open else '#ef5350' 
+                 for close, open in zip(df['close'], df['open'])]
+        
+        fig.add_trace(
+            go.Bar(
+                x=df.index,
+                y=df['volume'],
+                name="Volume",
+                marker_color=colors,
+                opacity=0.7
+            ),
+            row=2, col=1
+        )
+    
+    # Update layout
+    fig.update_layout(
+        title=f"{instrument} Live Analysis",
+        xaxis_title="Time",
+        yaxis_title="Price",
+        template="plotly_dark",
+        height=600,
+        showlegend=True
+    )
+    
+    fig.update_xaxes(rangeslider_visible=False)
+    
+    return fig
+
+def display_signal_card(signal, confidence, entry_signals):
+    """Display signal information in a card format"""
+    
+    if signal == 'NO_SIGNAL':
+        st.markdown('<div class="signal-neutral">⏳ NO SIGNAL</div>', unsafe_allow_html=True)
+        st.write(f"Confidence: {confidence}%")
+        return
+    
+    # Signal direction
+    direction = "🚀 BUY" if 'BULLISH' in signal else "🔻 SELL"
+    signal_class = "signal-bullish" if 'BULLISH' in signal else "signal-bearish"
+    
+    st.markdown(f'<div class="{signal_class}">{direction}</div>', unsafe_allow_html=True)
+    
+    # Metrics in columns
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Confidence", f"{confidence}%")
+    
+    with col2:
+        if entry_signals.get('entry_price'):
+            st.metric("Entry Price", f"{entry_signals['entry_price']:.5f}")
+    
+    with col3:
+        rr = entry_signals.get('risk_reward', {})
+        if rr.get('risk_reward'):
+            st.metric("Risk:Reward", f"1:{rr['risk_reward']:.2f}")
+
+def display_trade_details(entry_signals, results):
+    """Display detailed trade information"""
+    
+    rr = entry_signals.get('risk_reward', {})
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("📊 Trade Setup")
+        if rr.get('stop_loss'):
+            st.write(f"**Stop Loss:** {rr['stop_loss']:.5f}")
+        if rr.get('take_profit'):
+            st.write(f"**Take Profit:** {rr['take_profit']:.5f}")
+        
+        # Trend alignment
+        trend_aligned = entry_signals.get('trend_alignment', False)
+        alignment_icon = "✅" if trend_aligned else "❌"
+        st.write(f"**Trend Aligned:** {alignment_icon}")
+    
+    with col2:
+        st.subheader("🎯 Analysis")
+        trend_analysis = results.get('trend_analysis', {})
+        st.write(f"**Trend Bias:** {trend_analysis.get('bias', 'N/A')}")
+        st.write(f"**Trend Strength:** {trend_analysis.get('strength', 'N/A')}")
+        st.write(f"**Active Zones:** {len(entry_signals.get('active_zones', []))}")
+        
+        # Volume info
+        volume_profile = entry_signals.get('volume_profile', {})
+        if volume_profile.get('is_spike'):
+            st.write(f"**Volume:** 🔥 SPIKE ({volume_profile.get('volume_ratio', 0):.1f}x avg)")
+
+def display_multi_pair_signals():
+    """Display signals for multiple currency pairs"""
+    
+    pairs = ["EUR_USD", "GBP_USD", "USD_JPY", "AUD_USD", "USD_CAD"]
+    
+    st.subheader("🌍 Multi-Pair Signal Scan")
+    
+    # Create columns for pairs
+    cols = st.columns(len(pairs))
+    
+    opportunities = []
+    
+    for i, pair in enumerate(pairs):
+        with cols[i]:
+            try:
+                results = get_live_signals_data(pair)
+                
+                if results:
+                    entry_signals = results.get('entry_signals', {})
+                    signal = entry_signals.get('signal', 'NO_SIGNAL')
+                    confidence = entry_signals.get('confidence', 0)
+                    
+                    # Status indicator
+                    if confidence >= 60:
+                        status = "🎯"
+                        status_color = "green"
+                    elif confidence >= 50:
+                        status = "⚠️"
+                        status_color = "orange"
+                    else:
+                        status = "⏳"
+                        status_color = "gray"
+                    
+                    st.markdown(f"**{pair}**")
+                    st.markdown(f'<span style="color: {status_color}">{status} {confidence}%</span>', 
+                               unsafe_allow_html=True)
+                    
+                    if signal != 'NO_SIGNAL':
+                        direction = "BUY" if "BULLISH" in signal else "SELL"
+                        st.write(f"{direction}")
+                        
+                        if confidence >= 50:
+                            opportunities.append({
+                                'pair': pair,
+                                'signal': signal,
+                                'confidence': confidence,
+                                'entry_price': entry_signals.get('entry_price', 0),
+                                'trend_aligned': entry_signals.get('trend_alignment', False)
+                            })
+                    else:
+                        st.write("NO SIGNAL")
+                
+            except Exception as e:
+                st.write(f"❌ Error")
+                st.caption(str(e)[:20] + "...")
+    
+    # Show best opportunities
+    if opportunities:
+        st.subheader("🏆 Best Opportunities")
+        opportunities.sort(key=lambda x: x['confidence'], reverse=True)
+        
+        for opp in opportunities[:3]:  # Top 3
+            direction = "BUY" if "BULLISH" in opp['signal'] else "SELL"
+            trend_emoji = "✅" if opp['trend_aligned'] else "❌"
+            
+            st.info(f"**{opp['pair']}:** {direction} @ {opp['entry_price']:.5f} "
+                   f"({opp['confidence']}% confidence) {trend_emoji}")
+
+def main():
+    """Main Streamlit app"""
+    
+    # Header
+    st.title("📈 Live Trading Signals Dashboard")
+    st.markdown("Real-time forex trading signals powered by zone-based analysis")
+    
+    # Sidebar
+    st.sidebar.title("⚙️ Settings")
+    
+    # Instrument selection
+    instruments = ["EUR_USD", "GBP_USD", "USD_JPY", "AUD_USD", "USD_CAD", 
+                  "NZD_USD", "USD_CHF", "EUR_GBP", "EUR_JPY", "GBP_JPY"]
+    
+    selected_instrument = st.sidebar.selectbox(
+        "Select Currency Pair",
+        instruments,
+        index=2  # Default to USD_JPY
+    )
+    
+    # Display options
+    show_chart = st.sidebar.checkbox("Show Chart", value=True)
+    show_multi_pairs = st.sidebar.checkbox("Show Multi-Pair Scan", value=True)
+    
+    # Auto-refresh
+    auto_refresh = st.sidebar.checkbox("Auto Refresh (30s)", value=False)
+    
+    if auto_refresh:
+        # Auto refresh every 30 seconds
+        time.sleep(0.1)  # Small delay to prevent too frequent refreshes
+        st.rerun()
+    
+    # Manual refresh button
+    if st.sidebar.button("🔄 Refresh Data"):
+        st.cache_data.clear()
+        st.rerun()
+    
+    # Main content
+    st.markdown("---")
+    
+    # Single pair analysis
+    st.header(f"🎯 {selected_instrument} Analysis")
+    
+    # Get live signals
+    with st.spinner(f"Fetching signals for {selected_instrument}..."):
+        results = get_live_signals_data(selected_instrument)
+    
+    if results:
+        entry_signals = results.get('entry_signals', {})
+        signal = entry_signals.get('signal', 'NO_SIGNAL')
+        confidence = entry_signals.get('confidence', 0)
+        
+        # Display main signal
+        col1, col2 = st.columns([1, 2])
+        
+        with col1:
+            st.subheader("🚨 Current Signal")
+            display_signal_card(signal, confidence, entry_signals)
+        
+        with col2:
+            if signal != 'NO_SIGNAL' and confidence >= 60:
+                display_trade_details(entry_signals, results)
+            elif signal != 'NO_SIGNAL':
+                st.warning(f"⚠️ Signal present but low confidence ({confidence}%)")
+                st.info("Wait for higher confidence (60%+) before trading")
+            else:
+                st.info("⏳ No trading opportunity right now")
+                trend_analysis = results.get('trend_analysis', {})
+                st.write(f"**Current Trend:** {trend_analysis.get('bias', 'N/A')}")
+                st.write(f"**Current Price:** {trend_analysis.get('current_price', 'N/A'):.5f}")
+        
+        # Display chart if enabled
+        if show_chart:
+            st.markdown("---")
+            st.subheader("📊 Price Chart")
+            
+            mtf_data = results.get('mtf_data', {})
+            if mtf_data:
+                chart = create_price_chart(mtf_data, selected_instrument)
+                if chart:
+                    st.plotly_chart(chart, use_container_width=True)
+            else:
+                st.warning("Chart data not available")
+    
+    else:
+        st.error("❌ Unable to fetch signals. Please check your configuration.")
+    
+    # Multi-pair analysis
+    if show_multi_pairs:
+        st.markdown("---")
+        display_multi_pair_signals()
+    
+    # Footer
+    st.markdown("---")
+    st.markdown(f"*Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*")
+    
+    # Auto-refresh timer
+    if auto_refresh:
+        time.sleep(30)
+        st.rerun()
+
+if __name__ == "__main__":
+    main()

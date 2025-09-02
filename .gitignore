@@ -1,0 +1,13 @@
+# Ignore everything by default
+*
+
+# But include the streamlit_app folder and its contents
+!streamlit_app/
+!streamlit_app/**
+
+# However, still exclude secrets from streamlit_app
+streamlit_app/.streamlit/secrets.toml
+
+# Also exclude common files you might want to keep
+!.gitignore
+!README.md

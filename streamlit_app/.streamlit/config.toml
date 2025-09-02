@@ -1,0 +1,21 @@
+[global]
+# Streamlit sharing configuration
+disableWatchdogWarning = false
+
+[server]
+# Server configuration
+port = 8501
+enableCORS = false
+enableXsrfProtection = false
+
+[browser]
+# Browser configuration
+gatherUsageStats = false
+
+[theme]
+# Theme configuration for dark mode
+primaryColor = "#26a69a"
+backgroundColor = "#0e1117"
+secondaryBackgroundColor = "#1e1e1e"
+textColor = "#fafafa"
+base = "dark"
