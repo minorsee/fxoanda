@@ -181,17 +181,26 @@ def display_signal_card(signal, confidence, entry_signals):
     
     with col2:
         if entry_signals.get('entry_price'):
-            st.metric("📍 Entry Price", f"{entry_signals['entry_price']:.5f}")
+            entry_price = f"{entry_signals['entry_price']:.5f}"
+            st.markdown("**📍 Entry Price**")
+            st.markdown(f'<div style="font-size: 20px; font-weight: bold; color: #1f77b4;">{entry_price}</div>', 
+                       unsafe_allow_html=True)
     
     with col3:
         rr = entry_signals.get('risk_reward', {})
         if rr.get('take_profit'):
-            st.metric("🎯 Take Profit", f"{rr['take_profit']:.5f}")
+            tp_price = f"{rr['take_profit']:.5f}"
+            st.markdown("**🎯 Take Profit**")
+            st.markdown(f'<div style="font-size: 20px; font-weight: bold; color: #26a69a;">{tp_price}</div>', 
+                       unsafe_allow_html=True)
     
     with col4:
         rr = entry_signals.get('risk_reward', {})
         if rr.get('stop_loss'):
-            st.metric("🛑 Stop Loss", f"{rr['stop_loss']:.5f}")
+            sl_price = f"{rr['stop_loss']:.5f}"
+            st.markdown("**🛑 Stop Loss**")
+            st.markdown(f'<div style="font-size: 20px; font-weight: bold; color: #ef5350;">{sl_price}</div>', 
+                       unsafe_allow_html=True)
     
     # Additional risk/reward info
     if rr.get('risk_reward'):
@@ -303,19 +312,25 @@ def display_multi_pair_signals():
                 entry_signals = results.get('entry_signals', {})
                 rr = entry_signals.get('risk_reward', {})
                 
-                with st.expander(f"🎯 {opp['pair']}: {direction} @ {opp['entry_price']:.5f} ({opp['confidence']}% confidence) {trend_emoji}"):
+                # Format full precision values
+                entry_full = f"{opp['entry_price']:.5f}"
+                
+                with st.expander(f"🎯 {opp['pair']}: {direction} @ {entry_full} ({opp['confidence']}% confidence) {trend_emoji}"):
                     col1, col2, col3 = st.columns(3)
                     
                     with col1:
-                        st.write(f"**📍 Entry:** {opp['entry_price']:.5f}")
+                        st.markdown(f"**📍 Entry Price**")
+                        st.code(f"{opp['entry_price']:.5f}")
                     
                     with col2:
                         if rr.get('take_profit'):
-                            st.write(f"**🎯 Target:** {rr['take_profit']:.5f}")
+                            st.markdown(f"**🎯 Take Profit**")
+                            st.code(f"{rr['take_profit']:.5f}")
                     
                     with col3:
                         if rr.get('stop_loss'):
-                            st.write(f"**🛑 Stop Loss:** {rr['stop_loss']:.5f}")
+                            st.markdown(f"**🛑 Stop Loss**")
+                            st.code(f"{rr['stop_loss']:.5f}")
                     
                     if rr.get('risk_reward'):
                         st.caption(f"Risk:Reward = 1:{rr['risk_reward']:.2f}")
