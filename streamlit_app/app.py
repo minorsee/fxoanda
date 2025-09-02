@@ -173,20 +173,33 @@ def display_signal_card(signal, confidence, entry_signals):
     
     st.markdown(f'<div class="{signal_class}">{direction}</div>', unsafe_allow_html=True)
     
-    # Metrics in columns
-    col1, col2, col3 = st.columns(3)
+    # Main trade metrics in 4 columns
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         st.metric("Confidence", f"{confidence}%")
     
     with col2:
         if entry_signals.get('entry_price'):
-            st.metric("Entry Price", f"{entry_signals['entry_price']:.5f}")
+            st.metric("📍 Entry Price", f"{entry_signals['entry_price']:.5f}")
     
     with col3:
         rr = entry_signals.get('risk_reward', {})
-        if rr.get('risk_reward'):
-            st.metric("Risk:Reward", f"1:{rr['risk_reward']:.2f}")
+        if rr.get('take_profit'):
+            st.metric("🎯 Take Profit", f"{rr['take_profit']:.5f}")
+    
+    with col4:
+        rr = entry_signals.get('risk_reward', {})
+        if rr.get('stop_loss'):
+            st.metric("🛑 Stop Loss", f"{rr['stop_loss']:.5f}")
+    
+    # Additional risk/reward info
+    if rr.get('risk_reward'):
+        st.info(f"**Risk:Reward Ratio:** 1:{rr['risk_reward']:.2f}")
+        
+        # Calculate pips if available
+        if rr.get('risk_pips') and rr.get('reward_pips'):
+            st.caption(f"Risk: {rr['risk_pips']:.1f} pips | Reward: {rr['reward_pips']:.1f} pips")
 
 def display_trade_details(entry_signals, results):
     """Display detailed trade information"""
@@ -275,7 +288,7 @@ def display_multi_pair_signals():
                 st.write(f"❌ Error")
                 st.caption(str(e)[:20] + "...")
     
-    # Show best opportunities
+    # Show best opportunities with detailed info
     if opportunities:
         st.subheader("🏆 Best Opportunities")
         opportunities.sort(key=lambda x: x['confidence'], reverse=True)
@@ -284,8 +297,31 @@ def display_multi_pair_signals():
             direction = "BUY" if "BULLISH" in opp['signal'] else "SELL"
             trend_emoji = "✅" if opp['trend_aligned'] else "❌"
             
-            st.info(f"**{opp['pair']}:** {direction} @ {opp['entry_price']:.5f} "
-                   f"({opp['confidence']}% confidence) {trend_emoji}")
+            # Get additional trade details
+            results = get_live_signals_data(opp['pair'])
+            if results:
+                entry_signals = results.get('entry_signals', {})
+                rr = entry_signals.get('risk_reward', {})
+                
+                with st.expander(f"🎯 {opp['pair']}: {direction} @ {opp['entry_price']:.5f} ({opp['confidence']}% confidence) {trend_emoji}"):
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.write(f"**📍 Entry:** {opp['entry_price']:.5f}")
+                    
+                    with col2:
+                        if rr.get('take_profit'):
+                            st.write(f"**🎯 Target:** {rr['take_profit']:.5f}")
+                    
+                    with col3:
+                        if rr.get('stop_loss'):
+                            st.write(f"**🛑 Stop Loss:** {rr['stop_loss']:.5f}")
+                    
+                    if rr.get('risk_reward'):
+                        st.caption(f"Risk:Reward = 1:{rr['risk_reward']:.2f}")
+            else:
+                st.info(f"**{opp['pair']}:** {direction} @ {opp['entry_price']:.5f} "
+                       f"({opp['confidence']}% confidence) {trend_emoji}")
 
 def main():
     """Main Streamlit app"""
@@ -311,13 +347,21 @@ def main():
     show_chart = st.sidebar.checkbox("Show Chart", value=True)
     show_multi_pairs = st.sidebar.checkbox("Show Multi-Pair Scan", value=True)
     
-    # Auto-refresh
-    auto_refresh = st.sidebar.checkbox("Auto Refresh (30s)", value=False)
+    # Auto-refresh settings
+    auto_refresh = st.sidebar.checkbox("Enable Auto Refresh", value=False)
     
     if auto_refresh:
-        # Auto refresh every 30 seconds
-        time.sleep(0.1)  # Small delay to prevent too frequent refreshes
-        st.rerun()
+        refresh_interval = st.sidebar.slider(
+            "Refresh Interval (seconds)",
+            min_value=5,
+            max_value=300,
+            value=30,
+            step=5,
+            help="How often to refresh the data automatically"
+        )
+        st.sidebar.info(f"Auto-refreshing every {refresh_interval} seconds")
+    else:
+        refresh_interval = 30  # Default value when not auto-refreshing
     
     # Manual refresh button
     if st.sidebar.button("🔄 Refresh Data"):
@@ -381,12 +425,33 @@ def main():
     
     # Footer
     st.markdown("---")
-    st.markdown(f"*Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*")
     
-    # Auto-refresh timer
     if auto_refresh:
-        time.sleep(30)
+        # Show countdown and auto-refresh
+        col1, col2, col3 = st.columns([2, 1, 1])
+        
+        with col1:
+            st.markdown(f"*Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*")
+        
+        with col2:
+            # Create a placeholder for countdown
+            countdown_placeholder = st.empty()
+        
+        with col3:
+            # Stop button
+            if st.button("⏹️ Stop Auto-Refresh"):
+                st.stop()
+        
+        # Countdown timer
+        for i in range(refresh_interval, 0, -1):
+            countdown_placeholder.markdown(f"*Refreshing in {i}s*")
+            time.sleep(1)
+        
+        countdown_placeholder.markdown("*Refreshing now...*")
         st.rerun()
+        
+    else:
+        st.markdown(f"*Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*")
 
 if __name__ == "__main__":
     main()
