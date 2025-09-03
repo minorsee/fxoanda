@@ -20,3 +20,15 @@ SHOW_CHARTS = False  # Set to True to enable chart display, False to disable
 
 # Additional Streamlit-specific settings
 STREAMLIT_DEPLOYMENT = True
+
+# Email notification settings
+try:
+    # Email configuration from Streamlit secrets
+    SENDER_EMAIL = st.secrets.get("SENDER_EMAIL", "")
+    SENDER_PASSWORD = st.secrets.get("SENDER_PASSWORD", "")
+    RECIPIENT_EMAIL = st.secrets.get("RECIPIENT_EMAIL", "")
+except:
+    # Fallback to environment variables for local development
+    SENDER_EMAIL = os.getenv("SENDER_EMAIL", "")
+    SENDER_PASSWORD = os.getenv("SENDER_PASSWORD", "")
+    RECIPIENT_EMAIL = os.getenv("RECIPIENT_EMAIL", "")

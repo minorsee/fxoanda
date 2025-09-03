@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import time
+from email_notifications import EmailNotifier
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -241,7 +242,7 @@ def display_trade_details(entry_signals, results):
         if volume_profile.get('is_spike'):
             st.write(f"**Volume:** 🔥 SPIKE ({volume_profile.get('volume_ratio', 0):.1f}x avg)")
 
-def display_multi_pair_signals():
+def display_multi_pair_signals(email_notifier=None):
     """Display signals for multiple currency pairs"""
     
     pairs = ["EUR_USD", "GBP_USD", "USD_JPY", "AUD_USD", "USD_CAD"]
@@ -267,6 +268,23 @@ def display_multi_pair_signals():
                     if confidence >= 60:
                         status = "🎯"
                         status_color = "green"
+                        
+                        # Send email notification if enabled and signal is present
+                        if email_notifier and signal != 'NO_SIGNAL':
+                            rr = entry_signals.get('risk_reward', {})
+                            success, message = email_notifier.send_signal_notification(
+                                pair=pair,
+                                signal=signal,
+                                confidence=confidence,
+                                entry_price=entry_signals.get('entry_price', 0),
+                                take_profit=rr.get('take_profit'),
+                                stop_loss=rr.get('stop_loss')
+                            )
+                            if success:
+                                st.sidebar.success(f"📧 Email sent for {pair}")
+                            elif "already sent" not in message:
+                                st.sidebar.warning(f"📧 Email failed for {pair}: {message}")
+                                
                     elif confidence >= 50:
                         status = "⚠️"
                         status_color = "orange"
@@ -378,6 +396,32 @@ def main():
     else:
         refresh_interval = 30  # Default value when not auto-refreshing
     
+    # Email notification settings
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📧 Email Notifications")
+    
+    enable_email_notifications = st.sidebar.checkbox(
+        "Enable Email Alerts", 
+        value=False,
+        help="Send email when any pair exceeds 60% confidence"
+    )
+    
+    if enable_email_notifications:
+        st.sidebar.info("📧 Emails will be sent for signals with 60%+ confidence")
+        
+        # Test email configuration
+        if st.sidebar.button("🧪 Test Email Config"):
+            notifier = EmailNotifier()
+            success, message = notifier.test_email_connection()
+            if success:
+                st.sidebar.success(f"✅ {message}")
+            else:
+                st.sidebar.error(f"❌ {message}")
+                st.sidebar.info("Set email credentials in Streamlit secrets: SENDER_EMAIL, SENDER_PASSWORD, RECIPIENT_EMAIL")
+    
+    # Initialize email notifier if enabled
+    email_notifier = EmailNotifier() if enable_email_notifications else None
+    
     # Manual refresh button
     if st.sidebar.button("🔄 Refresh Data"):
         st.cache_data.clear()
@@ -408,6 +452,23 @@ def main():
         with col2:
             if signal != 'NO_SIGNAL' and confidence >= 60:
                 display_trade_details(entry_signals, results)
+                
+                # Send email notification if enabled
+                if email_notifier:
+                    rr = entry_signals.get('risk_reward', {})
+                    success, message = email_notifier.send_signal_notification(
+                        pair=selected_instrument,
+                        signal=signal,
+                        confidence=confidence,
+                        entry_price=entry_signals.get('entry_price', 0),
+                        take_profit=rr.get('take_profit'),
+                        stop_loss=rr.get('stop_loss')
+                    )
+                    if success:
+                        st.success(f"📧 Email notification sent!")
+                    elif "already sent" not in message:
+                        st.warning(f"📧 Email notification failed: {message}")
+                        
             elif signal != 'NO_SIGNAL':
                 st.warning(f"⚠️ Signal present but low confidence ({confidence}%)")
                 st.info("Wait for higher confidence (60%+) before trading")
@@ -436,7 +497,7 @@ def main():
     # Multi-pair analysis
     if show_multi_pairs:
         st.markdown("---")
-        display_multi_pair_signals()
+        display_multi_pair_signals(email_notifier)
     
     # Footer
     st.markdown("---")
