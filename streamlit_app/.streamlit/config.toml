@@ -1,6 +1,5 @@
 [global]
 # Streamlit sharing configuration
-disableWatchdogWarning = false
 
 [server]
 # Server configuration

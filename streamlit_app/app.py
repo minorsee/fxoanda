@@ -268,6 +268,9 @@ def display_multi_pair_signals(email_notifier=None):
                     if confidence >= 60:
                         status = "🎯"
                         status_color = "green"
+                    elif confidence >= 55:
+                        status = "⚠️"
+                        status_color = "orange"
                         
                         # Send email notification if enabled and signal is present
                         if email_notifier and signal != 'NO_SIGNAL':
@@ -300,7 +303,7 @@ def display_multi_pair_signals(email_notifier=None):
                         direction = "BUY" if "BULLISH" in signal else "SELL"
                         st.write(f"{direction}")
                         
-                        if confidence >= 50:
+                        if confidence >= 55:
                             opportunities.append({
                                 'pair': pair,
                                 'signal': signal,
@@ -403,11 +406,11 @@ def main():
     enable_email_notifications = st.sidebar.checkbox(
         "Enable Email Alerts", 
         value=False,
-        help="Send email when any pair exceeds 60% confidence"
+        help="Send email when any pair exceeds 55% confidence"
     )
     
     if enable_email_notifications:
-        st.sidebar.info("📧 Emails will be sent for signals with 60%+ confidence")
+        st.sidebar.info("📧 Emails will be sent for signals with 55%+ confidence")
         
         # Test email configuration
         if st.sidebar.button("🧪 Test Email Config"):
@@ -454,6 +457,26 @@ def main():
                 display_trade_details(entry_signals, results)
                 
                 # Send email notification if enabled
+                if email_notifier:
+                    rr = entry_signals.get('risk_reward', {})
+                    success, message = email_notifier.send_signal_notification(
+                        pair=selected_instrument,
+                        signal=signal,
+                        confidence=confidence,
+                        entry_price=entry_signals.get('entry_price', 0),
+                        take_profit=rr.get('take_profit'),
+                        stop_loss=rr.get('stop_loss')
+                    )
+                    if success:
+                        st.success(f"📧 Email notification sent!")
+                    elif "already sent" not in message:
+                        st.warning(f"📧 Email notification failed: {message}")
+                        
+            elif signal != 'NO_SIGNAL' and confidence >= 55:
+                st.warning(f"⚠️ Signal present with {confidence}% confidence")
+                st.info("Moderate confidence signal detected")
+                
+                # Send email notification for 55%+ signals if enabled
                 if email_notifier:
                     rr = entry_signals.get('risk_reward', {})
                     success, message = email_notifier.send_signal_notification(
