@@ -5,6 +5,10 @@
 !streamlit_app/
 !streamlit_app/**
 
+# Accept GitHub workflows
+!.github/workflows/
+!.github/workflows/**
+
 # However, still exclude secrets from streamlit_app
 streamlit_app/.streamlit/secrets.toml
 
