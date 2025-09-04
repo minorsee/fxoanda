@@ -246,7 +246,7 @@ def display_trade_details(entry_signals, results):
 def display_multi_pair_signals(email_notifier=None):
     """Display signals for multiple currency pairs"""
     
-    pairs = ["EUR_USD", "GBP_USD", "USD_JPY", "AUD_USD", "USD_CAD"]
+    pairs = ["EUR_USD", "GBP_USD", "USD_JPY", "AUD_USD", "USD_CAD", "NZD_USD", "GBP_JPY", "EUR_GBP"]
     
     st.subheader("🌍 Multi-Pair Signal Scan")
     
@@ -282,84 +282,92 @@ def display_multi_pair_signals(email_notifier=None):
                     time_range = f"{start_hour:02d}:00 - {end_hour:02d}:00"
                 st.caption(f"UTC: {time_range}")
     
-    # Create columns for pairs
-    cols = st.columns(len(pairs))
+    # Create columns for pairs (use 4 columns, 2 rows for better layout)
+    pairs_per_row = 4
+    num_rows = (len(pairs) + pairs_per_row - 1) // pairs_per_row  # Ceiling division
     
     opportunities = []
     
-    for i, pair in enumerate(pairs):
-        with cols[i]:
-            try:
-                # Check trading session first
-                is_active, session_info = is_pair_in_trading_session(pair)
-                
-                st.markdown(f"**{pair}**")
-                
-                if not is_active:
-                    # Pair not in active trading session
-                    st.markdown('🕒 **CLOSED**')
+    # Display pairs in rows of 4
+    for row in range(num_rows):
+        cols = st.columns(pairs_per_row)
+        start_idx = row * pairs_per_row
+        end_idx = min(start_idx + pairs_per_row, len(pairs))
+        
+        for col_idx, pair_idx in enumerate(range(start_idx, end_idx)):
+            pair = pairs[pair_idx]
+            with cols[col_idx]:
+                try:
+                    # Check trading session first
+                    is_active, session_info = is_pair_in_trading_session(pair)
+                    
+                    st.markdown(f"**{pair}**")
+                    
+                    if not is_active:
+                        # Pair not in active trading session
+                        st.markdown('🕒 **CLOSED**')
+                        st.caption(session_info)
+                        continue
+                        
+                    # Show active session info
                     st.caption(session_info)
-                    continue
                     
-                # Show active session info
-                st.caption(session_info)
-                
-                results = get_live_signals_data(pair)
-                
-                if results:
-                    entry_signals = results.get('entry_signals', {})
-                    signal = entry_signals.get('signal', 'NO_SIGNAL')
-                    confidence = entry_signals.get('confidence', 0)
+                    results = get_live_signals_data(pair)
                     
-                    # Status indicator
-                    if confidence >= 60:
-                        status = "🎯"
-                        status_color = "green"
+                    if results:
+                        entry_signals = results.get('entry_signals', {})
+                        signal = entry_signals.get('signal', 'NO_SIGNAL')
+                        confidence = entry_signals.get('confidence', 0)
                         
-                        # Send email notification if enabled and signal is present
-                        if email_notifier and signal != 'NO_SIGNAL':
-                            rr = entry_signals.get('risk_reward', {})
-                            success, message = email_notifier.send_signal_notification(
-                                pair=pair,
-                                signal=signal,
-                                confidence=confidence,
-                                entry_price=entry_signals.get('entry_price', 0),
-                                take_profit=rr.get('take_profit'),
-                                stop_loss=rr.get('stop_loss')
-                            )
-                            if success:
-                                st.sidebar.success(f"📧 Email sent for {pair}")
-                            elif "already sent" not in message:
-                                st.sidebar.warning(f"📧 Email failed for {pair}: {message}")
+                        # Status indicator
+                        if confidence >= 60:
+                            status = "🎯"
+                            status_color = "green"
+                            
+                            # Send email notification if enabled and signal is present
+                            if email_notifier and signal != 'NO_SIGNAL':
+                                rr = entry_signals.get('risk_reward', {})
+                                success, message = email_notifier.send_signal_notification(
+                                    pair=pair,
+                                    signal=signal,
+                                    confidence=confidence,
+                                    entry_price=entry_signals.get('entry_price', 0),
+                                    take_profit=rr.get('take_profit'),
+                                    stop_loss=rr.get('stop_loss')
+                                )
+                                if success:
+                                    st.sidebar.success(f"📧 Email sent for {pair}")
+                                elif "already sent" not in message:
+                                    st.sidebar.warning(f"📧 Email failed for {pair}: {message}")
                                 
-                    elif confidence >= 50:
-                        status = "⚠️"
-                        status_color = "orange"
-                    else:
-                        status = "⏳"
-                        status_color = "gray"
-                    
-                    st.markdown(f'<span style="color: {status_color}">{status} {confidence}%</span>', 
-                               unsafe_allow_html=True)
-                    
-                    if signal != 'NO_SIGNAL':
-                        direction = "BUY" if "BULLISH" in signal else "SELL"
-                        st.write(f"{direction}")
+                        elif confidence >= 50:
+                            status = "⚠️"
+                            status_color = "orange"
+                        else:
+                            status = "⏳"
+                            status_color = "gray"
                         
-                        if confidence >= 50:
-                            opportunities.append({
-                                'pair': pair,
-                                'signal': signal,
-                                'confidence': confidence,
-                                'entry_price': entry_signals.get('entry_price', 0),
-                                'trend_aligned': entry_signals.get('trend_alignment', False)
-                            })
-                    else:
-                        st.write("NO SIGNAL")
-                
-            except Exception as e:
-                st.write(f"❌ Error")
-                st.caption(str(e)[:20] + "...")
+                        st.markdown(f'<span style="color: {status_color}">{status} {confidence}%</span>', 
+                                   unsafe_allow_html=True)
+                        
+                        if signal != 'NO_SIGNAL':
+                            direction = "BUY" if "BULLISH" in signal else "SELL"
+                            st.write(f"{direction}")
+                            
+                            if confidence >= 50:
+                                opportunities.append({
+                                    'pair': pair,
+                                    'signal': signal,
+                                    'confidence': confidence,
+                                    'entry_price': entry_signals.get('entry_price', 0),
+                                    'trend_aligned': entry_signals.get('trend_alignment', False)
+                                })
+                        else:
+                            st.write("NO SIGNAL")
+                    
+                except Exception as e:
+                    st.write(f"❌ Error")
+                    st.caption(str(e)[:20] + "...")
     
     # Show best opportunities with detailed info
     if opportunities:
@@ -408,6 +416,15 @@ def main():
     # Header
     st.title("📈 Live Trading Signals Dashboard")
     st.markdown("Real-time forex trading signals powered by zone-based analysis")
+    
+    # Current time display
+    current_time = datetime.now()
+    current_utc = datetime.utcnow()
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        st.info(f"🕒 **Local Time:** {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    with col2:
+        st.info(f"🌍 **UTC Time:** {current_utc.strftime('%Y-%m-%d %H:%M:%S')}")
     
     # Sidebar
     st.sidebar.title("⚙️ Settings")

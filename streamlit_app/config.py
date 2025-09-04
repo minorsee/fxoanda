@@ -51,10 +51,10 @@ PAIR_TRADING_SESSIONS = {
     "AUD_USD": ["SYDNEY", "TOKYO"],         # Most active during Pacific and Asian sessions
     "USD_CAD": ["NEW_YORK"],                # Most active during US session
     "NZD_USD": ["SYDNEY", "TOKYO"],         # Most active during Pacific and Asian sessions
-    "USD_CHF": ["LONDON", "NEW_YORK"],      # Most active during European and US sessions
-    "EUR_GBP": ["LONDON"],                  # Most active during European session
-    "EUR_JPY": ["TOKYO", "LONDON"],         # Most active during Asian and European sessions
     "GBP_JPY": ["TOKYO", "LONDON"],         # Most active during Asian and European sessions
+    "EUR_GBP": ["LONDON"],                  # Most active during European session
+    "USD_CHF": ["LONDON", "NEW_YORK"],      # Most active during European and US sessions
+    "EUR_JPY": ["TOKYO", "LONDON"],         # Most active during Asian and European sessions
 }
 
 def is_pair_in_trading_session(pair):
