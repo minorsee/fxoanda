@@ -12,6 +12,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import time
 from email_notifications import EmailNotifier
+from config import is_pair_in_trading_session
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -249,6 +250,38 @@ def display_multi_pair_signals(email_notifier=None):
     
     st.subheader("🌍 Multi-Pair Signal Scan")
     
+    # Add trading session info
+    current_time = datetime.now()
+    st.caption(f"Current UTC Time: {current_time.strftime('%H:%M')} | Only scanning pairs during active trading sessions")
+    
+    # Display trading session status
+    with st.expander("🌐 Trading Session Status", expanded=False):
+        session_cols = st.columns(4)
+        sessions = ["SYDNEY", "TOKYO", "LONDON", "NEW_YORK"]
+        
+        from config import TRADING_SESSIONS
+        current_hour = current_time.hour
+        
+        for i, session in enumerate(sessions):
+            with session_cols[i]:
+                start_hour, end_hour = TRADING_SESSIONS[session]
+                
+                # Check if session is active
+                if start_hour > end_hour:  # Cross midnight
+                    is_session_active = current_hour >= start_hour or current_hour < end_hour
+                else:
+                    is_session_active = start_hour <= current_hour < end_hour
+                
+                status_emoji = "🟢" if is_session_active else "🔴"
+                st.markdown(f"{status_emoji} **{session}**")
+                
+                # Convert UTC hours to local time display
+                if start_hour > end_hour:
+                    time_range = f"{start_hour:02d}:00 - {end_hour:02d}:00+1"
+                else:
+                    time_range = f"{start_hour:02d}:00 - {end_hour:02d}:00"
+                st.caption(f"UTC: {time_range}")
+    
     # Create columns for pairs
     cols = st.columns(len(pairs))
     
@@ -257,6 +290,20 @@ def display_multi_pair_signals(email_notifier=None):
     for i, pair in enumerate(pairs):
         with cols[i]:
             try:
+                # Check trading session first
+                is_active, session_info = is_pair_in_trading_session(pair)
+                
+                st.markdown(f"**{pair}**")
+                
+                if not is_active:
+                    # Pair not in active trading session
+                    st.markdown('🕒 **CLOSED**')
+                    st.caption(session_info)
+                    continue
+                    
+                # Show active session info
+                st.caption(session_info)
+                
                 results = get_live_signals_data(pair)
                 
                 if results:
@@ -292,7 +339,6 @@ def display_multi_pair_signals(email_notifier=None):
                         status = "⏳"
                         status_color = "gray"
                     
-                    st.markdown(f"**{pair}**")
                     st.markdown(f'<span style="color: {status_color}">{status} {confidence}%</span>', 
                                unsafe_allow_html=True)
                     
@@ -402,7 +448,7 @@ def main():
     
     enable_email_notifications = st.sidebar.checkbox(
         "Enable Email Alerts", 
-        value=False,
+        value=True,
         help="Send email when any pair exceeds 60% confidence"
     )
     
