@@ -9,7 +9,7 @@ class EmailNotifier:
     def __init__(self):
         self.smtp_server = "smtp.gmail.com"
         self.port = 587
-        self.sent_notifications = set()  # Track sent notifications to avoid spam
+        self.sent_signals = {}  # Track sent signals with full details to avoid duplicates
     
     def get_email_config(self):
         """Get email configuration from Streamlit secrets"""
@@ -28,11 +28,23 @@ class EmailNotifier:
     def send_signal_notification(self, pair, signal, confidence, entry_price, take_profit=None, stop_loss=None):
         """Send email notification for high confidence trading signal"""
         
-        # Create unique key for this signal to avoid duplicate notifications
-        signal_key = f"{pair}_{signal}_{confidence}_{datetime.now().strftime('%Y%m%d%H')}"
+        # Create signal state dictionary for comparison
+        current_signal = {
+            'pair': pair,
+            'signal': signal,
+            'entry_price': round(entry_price, 5) if entry_price else None,
+            'take_profit': round(take_profit, 5) if take_profit else None,
+            'stop_loss': round(stop_loss, 5) if stop_loss else None
+        }
         
-        if signal_key in self.sent_notifications:
-            return False, "Notification already sent for this signal"
+        # Check if this exact signal was already sent
+        if pair in self.sent_signals:
+            last_signal = self.sent_signals[pair]
+            if (last_signal['signal'] == current_signal['signal'] and 
+                last_signal['entry_price'] == current_signal['entry_price'] and
+                last_signal['take_profit'] == current_signal['take_profit'] and
+                last_signal['stop_loss'] == current_signal['stop_loss']):
+                return False, "Identical signal already sent - no duplicate email"
         
         sender_email, sender_password, recipient_email = self.get_email_config()
         
@@ -127,8 +139,12 @@ class EmailNotifier:
                 text = message.as_string()
                 server.sendmail(sender_email, recipient_email, text)
             
-            # Track this notification
-            self.sent_notifications.add(signal_key)
+            # Track this signal with full details
+            self.sent_signals[pair] = current_signal
+            
+            # Save to streamlit session state for persistence
+            if 'sent_signals' in st.session_state:
+                st.session_state.sent_signals = self.sent_signals
             
             return True, "Email notification sent successfully"
             

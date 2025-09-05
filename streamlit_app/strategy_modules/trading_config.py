@@ -268,11 +268,9 @@ def use_original_settings():
 # Default to balanced settings
 use_aggressive_settings()  # Uncomment to apply automatically
 
-# Major pairs to analyze
+# XXX_USD pairs only
 MAJOR_PAIRS = [
-    "EUR_USD", "GBP_USD", 
-    "USD_JPY", "USD_CHF", "AUD_USD", 
-    "USD_CAD", "NZD_USD"
+    "EUR_USD", "GBP_USD", "AUD_USD", "NZD_USD"
 ]
 
 # === DATA PARAMETERS ===

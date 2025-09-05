@@ -246,7 +246,7 @@ def display_trade_details(entry_signals, results):
 def display_multi_pair_signals(email_notifier=None):
     """Display signals for multiple currency pairs"""
     
-    pairs = ["EUR_USD", "GBP_USD", "USD_JPY", "AUD_USD", "USD_CAD", "NZD_USD", "GBP_JPY", "EUR_GBP"]
+    pairs = ["EUR_USD", "GBP_USD", "AUD_USD", "NZD_USD"]  # XXX_USD pairs only
     
     st.subheader("🌍 Multi-Pair Signal Scan")
     
@@ -430,8 +430,7 @@ def main():
     st.sidebar.title("⚙️ Settings")
     
     # Instrument selection
-    instruments = ["EUR_USD", "GBP_USD", "USD_JPY", "AUD_USD", "USD_CAD", 
-                  "NZD_USD", "USD_CHF", "EUR_GBP", "EUR_JPY", "GBP_JPY"]
+    instruments = ["EUR_USD", "GBP_USD", "AUD_USD", "NZD_USD"]  # XXX_USD pairs only
     
     selected_instrument = st.sidebar.selectbox(
         "Select Currency Pair",
@@ -481,9 +480,32 @@ def main():
             else:
                 st.sidebar.error(f"❌ {message}")
                 st.sidebar.info("Set email credentials in Streamlit secrets: SENDER_EMAIL, SENDER_PASSWORD, RECIPIENT_EMAIL")
+        
+        # Clear sent signals state
+        if st.sidebar.button("🗑️ Clear Signal History"):
+            st.session_state.sent_signals = {}
+            st.sidebar.success("Signal history cleared - will resend emails for new identical signals")
+        
+        # Show signal history for debugging
+        if st.sidebar.checkbox("Show Signal History", value=False):
+            if 'sent_signals' in st.session_state and st.session_state.sent_signals:
+                st.sidebar.write("**Last Sent Signals:**")
+                for pair, signal_data in st.session_state.sent_signals.items():
+                    st.sidebar.write(f"{pair}: {signal_data['signal']}")
+                    st.sidebar.write(f"  Entry: {signal_data['entry_price']}")
+            else:
+                st.sidebar.write("No signals sent yet")
     
-    # Initialize email notifier if enabled
-    email_notifier = EmailNotifier() if enable_email_notifications else None
+    # Initialize email notifier if enabled with session state persistence
+    email_notifier = None
+    if enable_email_notifications:
+        # Initialize session state for sent signals if not exists
+        if 'sent_signals' not in st.session_state:
+            st.session_state.sent_signals = {}
+        
+        email_notifier = EmailNotifier()
+        # Restore sent signals state from session state
+        email_notifier.sent_signals = st.session_state.sent_signals
     
     # Manual refresh button
     if st.sidebar.button("🔄 Refresh Data"):
