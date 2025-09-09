@@ -55,17 +55,14 @@ st.markdown("""
 
 @st.cache_data(ttl=300)  # Cache for 5 minutes
 def get_live_signals_data(instrument="USD_JPY"):
-    """Get current trading signals for an instrument with caching"""
+    """Get current trading signals for an instrument with safe NaN handling"""
     
     try:
-        # Import here to avoid circular imports and allow for secrets
-        from strategy_modules.zone_trader import ZoneTrader
+        # Use safe analysis wrapper to prevent NaN warnings
+        from safe_analysis import safe_get_signals
         
-        # Create trader instance
-        trader = ZoneTrader()
-        
-        # Run the analysis
-        results = trader.run_analysis(instrument)
+        # Get signals with NaN protection
+        results = safe_get_signals(instrument)
         
         if not results:
             return None
@@ -162,7 +159,8 @@ def create_price_chart(mtf_data, instrument):
     return fig
 
 def display_signal_card(signal, confidence, entry_signals):
-    """Display signal information in a card format"""
+    """Display signal information in a card format with safe number formatting"""
+    from safe_analysis import safe_format_number, safe_format_percentage
     
     if signal == 'NO_SIGNAL':
         st.markdown('<div class="signal-neutral">⏳ NO SIGNAL</div>', unsafe_allow_html=True)
@@ -179,11 +177,11 @@ def display_signal_card(signal, confidence, entry_signals):
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric("Confidence", f"{confidence}%")
+        st.metric("Confidence", safe_format_percentage(confidence))
     
     with col2:
         if entry_signals.get('entry_price'):
-            entry_price = f"{entry_signals['entry_price']:.5f}"
+            entry_price = safe_format_number(entry_signals['entry_price'])
             st.markdown("**📍 Entry Price**")
             st.markdown(f'<div style="font-size: 20px; font-weight: bold; color: #1f77b4;">{entry_price}</div>', 
                        unsafe_allow_html=True)
@@ -191,7 +189,7 @@ def display_signal_card(signal, confidence, entry_signals):
     with col3:
         rr = entry_signals.get('risk_reward', {})
         if rr.get('take_profit'):
-            tp_price = f"{rr['take_profit']:.5f}"
+            tp_price = safe_format_number(rr['take_profit'])
             st.markdown("**🎯 Take Profit**")
             st.markdown(f'<div style="font-size: 20px; font-weight: bold; color: #26a69a;">{tp_price}</div>', 
                        unsafe_allow_html=True)
@@ -199,21 +197,22 @@ def display_signal_card(signal, confidence, entry_signals):
     with col4:
         rr = entry_signals.get('risk_reward', {})
         if rr.get('stop_loss'):
-            sl_price = f"{rr['stop_loss']:.5f}"
+            sl_price = safe_format_number(rr['stop_loss'])
             st.markdown("**🛑 Stop Loss**")
             st.markdown(f'<div style="font-size: 20px; font-weight: bold; color: #ef5350;">{sl_price}</div>', 
                        unsafe_allow_html=True)
     
     # Additional risk/reward info
     if rr.get('risk_reward'):
-        st.info(f"**Risk:Reward Ratio:** 1:{rr['risk_reward']:.2f}")
+        st.info(f"**Risk:Reward Ratio:** 1:{safe_format_number(rr['risk_reward'], 2)}")
         
         # Calculate pips if available
         if rr.get('risk_pips') and rr.get('reward_pips'):
-            st.caption(f"Risk: {rr['risk_pips']:.1f} pips | Reward: {rr['reward_pips']:.1f} pips")
+            st.caption(f"Risk: {safe_format_number(rr['risk_pips'], 1)} pips | Reward: {safe_format_number(rr['reward_pips'], 1)} pips")
 
 def display_trade_details(entry_signals, results):
-    """Display detailed trade information"""
+    """Display detailed trade information with safe formatting"""
+    from safe_analysis import safe_format_number, safe_format_percentage
     
     rr = entry_signals.get('risk_reward', {})
     
@@ -222,9 +221,9 @@ def display_trade_details(entry_signals, results):
     with col1:
         st.subheader("📊 Trade Setup")
         if rr.get('stop_loss'):
-            st.write(f"**Stop Loss:** {rr['stop_loss']:.5f}")
+            st.write(f"**Stop Loss:** {safe_format_number(rr['stop_loss'])}")
         if rr.get('take_profit'):
-            st.write(f"**Take Profit:** {rr['take_profit']:.5f}")
+            st.write(f"**Take Profit:** {safe_format_number(rr['take_profit'])}")
         
         # Trend alignment
         trend_aligned = entry_signals.get('trend_alignment', False)
@@ -241,14 +240,39 @@ def display_trade_details(entry_signals, results):
         # Volume info
         volume_profile = entry_signals.get('volume_profile', {})
         if volume_profile.get('is_spike'):
-            st.write(f"**Volume:** 🔥 SPIKE ({volume_profile.get('volume_ratio', 0):.1f}x avg)")
+            st.write(f"**Volume:** 🔥 SPIKE ({safe_format_number(volume_profile.get('volume_ratio', 0), 1)}x avg)")
 
 def display_multi_pair_signals(email_notifier=None):
-    """Display signals for multiple currency pairs"""
+    """Display signals for multiple currency pairs with safe number formatting"""
+    from safe_analysis import safe_format_number, safe_format_percentage
     
-    pairs = ["EUR_USD", "GBP_USD", "AUD_USD", "NZD_USD"]  # XXX_USD pairs only
+    pairs = ["EUR_USD", "GBP_USD", "AUD_USD", "NZD_USD"]  # Keep to 4 main pairs
     
     st.subheader("🌍 Multi-Pair Signal Scan")
+    
+    # Add cache status and controls
+    col1, col2, col3 = st.columns([2, 1, 1])
+    with col1:
+        st.caption(f"Scanning {len(pairs)} pairs (auto-batched to respect rate limits)")
+    
+    with col2:
+        if st.button("📦 Cache Status"):
+            try:
+                from rate_limited_fetcher import get_cache_status
+                cache_info = get_cache_status()
+                st.info(f"Cached: {cache_info['valid_entries']} pairs, Duration: {cache_info['cache_duration_minutes']:.0f}m")
+            except:
+                st.info("Cache status unavailable")
+    
+    with col3:
+        if st.button("🗑️ Clear Cache"):
+            try:
+                from rate_limited_fetcher import clear_data_cache
+                clear_data_cache()
+                st.success("Cache cleared!")
+                st.rerun()
+            except:
+                st.error("Cache clear failed")
     
     # Add trading session info
     current_time = datetime.now()
@@ -385,33 +409,36 @@ def display_multi_pair_signals(email_notifier=None):
                 rr = entry_signals.get('risk_reward', {})
                 
                 # Format full precision values
-                entry_full = f"{opp['entry_price']:.5f}"
+                entry_full = safe_format_number(opp['entry_price'])
+                confidence_formatted = safe_format_percentage(opp['confidence'])
                 
-                with st.expander(f"🎯 {opp['pair']}: {direction} @ {entry_full} ({opp['confidence']}% confidence) {trend_emoji}"):
+                with st.expander(f"🎯 {opp['pair']}: {direction} @ {entry_full} ({confidence_formatted} confidence) {trend_emoji}"):
                     col1, col2, col3 = st.columns(3)
                     
                     with col1:
                         st.markdown(f"**📍 Entry Price**")
-                        st.code(f"{opp['entry_price']:.5f}")
+                        st.code(safe_format_number(opp['entry_price']))
                     
                     with col2:
                         if rr.get('take_profit'):
                             st.markdown(f"**🎯 Take Profit**")
-                            st.code(f"{rr['take_profit']:.5f}")
+                            st.code(safe_format_number(rr['take_profit']))
                     
                     with col3:
                         if rr.get('stop_loss'):
                             st.markdown(f"**🛑 Stop Loss**")
-                            st.code(f"{rr['stop_loss']:.5f}")
+                            st.code(safe_format_number(rr['stop_loss']))
                     
                     if rr.get('risk_reward'):
-                        st.caption(f"Risk:Reward = 1:{rr['risk_reward']:.2f}")
+                        st.caption(f"Risk:Reward = 1:{safe_format_number(rr['risk_reward'], 2)}")
             else:
-                st.info(f"**{opp['pair']}:** {direction} @ {opp['entry_price']:.5f} "
-                       f"({opp['confidence']}% confidence) {trend_emoji}")
+                entry_formatted = safe_format_number(opp['entry_price'])
+                st.info(f"**{opp['pair']}:** {direction} @ {entry_formatted} "
+                       f"({safe_format_percentage(opp['confidence'])} confidence) {trend_emoji}")
 
 def main():
-    """Main Streamlit app"""
+    """Main Streamlit app with safe number formatting"""
+    from safe_analysis import safe_format_number, safe_format_percentage
     
     # Header
     st.title("📈 Live Trading Signals Dashboard")
@@ -561,7 +588,13 @@ def main():
                 st.info("⏳ No trading opportunity right now")
                 trend_analysis = results.get('trend_analysis', {})
                 st.write(f"**Current Trend:** {trend_analysis.get('bias', 'N/A')}")
-                st.write(f"**Current Price:** {trend_analysis.get('current_price', 'N/A'):.5f}")
+                
+                # Only show current price if it's valid (not 0.0)
+                current_price = trend_analysis.get('current_price', 0)
+                if current_price > 0:
+                    st.write(f"**Current Price:** {safe_format_number(current_price)}")
+                else:
+                    st.write("**Current Price:** N/A (Data fetch error)")
         
         # Display chart if enabled
         if show_chart:

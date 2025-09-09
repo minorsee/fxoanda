@@ -9,11 +9,13 @@ warnings.filterwarnings('ignore')
 
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add the root directory to Python path
+root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, root_dir)
 
 from oanda_trader import OandaTrader
-from strategy_modules.technical_analysis import TechnicalAnalysis
-from strategy_modules.price_action import PriceAction
+from zone_based_strategy.technical_analysis import TechnicalAnalysis
+from zone_based_strategy.price_action import PriceAction
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import trading_config as tc
 
@@ -43,31 +45,37 @@ class ZoneTrader:
             daily_data = self.oanda.get_candles(
                 instrument, tc.TREND_TIMEFRAME, tc.CANDLE_COUNT[tc.TREND_TIMEFRAME]
             )
-            if daily_data is not None:
+            if daily_data is not None and not daily_data.empty:
                 mtf_data['daily'] = self.ta.add_moving_averages(daily_data)
                 if tc.DEBUG_MODE:
                     print(f"✓ Daily data: {len(daily_data)} candles")
+            else:
+                print(f"❌ No daily data received for {instrument}")
             
             # H4 data for zones
             h4_data = self.oanda.get_candles(
                 instrument, tc.ZONE_TIMEFRAME, tc.CANDLE_COUNT[tc.ZONE_TIMEFRAME]
             )
-            if h4_data is not None:
+            if h4_data is not None and not h4_data.empty:
                 mtf_data['h4'] = self.ta.add_moving_averages(h4_data)
                 if tc.DEBUG_MODE:
                     print(f"✓ H4 data: {len(h4_data)} candles")
+            else:
+                print(f"❌ No H4 data received for {instrument}")
             
             # H1 data for execution
             h1_data = self.oanda.get_candles(
                 instrument, tc.EXECUTION_TIMEFRAME, tc.CANDLE_COUNT[tc.EXECUTION_TIMEFRAME]
             )
-            if h1_data is not None:
+            if h1_data is not None and not h1_data.empty:
                 mtf_data['h1'] = self.ta.add_moving_averages(h1_data)
                 if tc.DEBUG_MODE:
                     print(f"✓ H1 data: {len(h1_data)} candles")
+            else:
+                print(f"❌ No H1 data received for {instrument}")
             
         except Exception as e:
-            print(f"Error fetching multi-timeframe data: {e}")
+            print(f"Error fetching multi-timeframe data for {instrument}: {e}")
         
         return mtf_data
     
@@ -76,37 +84,86 @@ class ZoneTrader:
         Analyze trend bias from higher timeframe (Daily)
         Returns trend direction and strength
         """
-        if daily_data.empty:
-            return {'bias': 'NEUTRAL', 'strength': 'WEAK'}
+        if daily_data is None or daily_data.empty:
+            return {
+                'bias': 'NEUTRAL', 
+                'strength': 'WEAK',
+                'fast_ma': 0.0,
+                'slow_ma': 0.0,
+                'trend_ma': 0.0,
+                'current_price': 0.0,
+                'atr': 0.0
+            }
         
-        trend_bias = self.ta.get_trend_bias(daily_data)
+        # Check if required columns exist
+        required_columns = ['close', 'fast_ma', 'slow_ma', 'trend_ma']
+        if not all(col in daily_data.columns for col in required_columns):
+            print(f"Missing required columns in daily data. Available: {daily_data.columns.tolist()}")
+            return {
+                'bias': 'NEUTRAL', 
+                'strength': 'WEAK',
+                'fast_ma': 0.0,
+                'slow_ma': 0.0,
+                'trend_ma': 0.0,
+                'current_price': 0.0,
+                'atr': 0.0
+            }
         
-        # Additional trend strength analysis
-        latest = daily_data.iloc[-1]
-        
-        # Check MA separation for trend strength
-        fast_slow_separation = abs(latest['fast_ma'] - latest['slow_ma'])
-        price_trend_separation = abs(latest['close'] - latest['trend_ma'])
-        
-        # Calculate ATR for relative strength measurement
-        atr = self.ta.calculate_atr(daily_data).iloc[-1]
-        
-        if fast_slow_separation > atr * 0.5 and price_trend_separation > atr * 0.3:
-            strength = 'STRONG'
-        elif fast_slow_separation > atr * 0.2:
-            strength = 'MEDIUM'
-        else:
-            strength = 'WEAK'
-        
-        return {
-            'bias': trend_bias,
-            'strength': strength,
-            'fast_ma': latest['fast_ma'],
-            'slow_ma': latest['slow_ma'],
-            'trend_ma': latest['trend_ma'],
-            'current_price': latest['close'],
-            'atr': atr
-        }
+        try:
+            trend_bias = self.ta.get_trend_bias(daily_data)
+            
+            # Additional trend strength analysis
+            latest = daily_data.iloc[-1]
+            
+            # Check for NaN values in MAs (silently handle without warnings)
+            if (pd.isna(latest['fast_ma']) or pd.isna(latest['slow_ma']) or 
+                pd.isna(latest['trend_ma'])):
+                # Return neutral bias with current price as fallback values
+                return {
+                    'bias': 'NEUTRAL',
+                    'strength': 'WEAK',
+                    'fast_ma': latest['close'],  # Use current price as fallback
+                    'slow_ma': latest['close'],
+                    'trend_ma': latest['close'],
+                    'current_price': latest['close'],
+                    'atr': latest['close'] * 0.001  # Small ATR fallback
+                }
+            
+            # Check MA separation for trend strength
+            fast_slow_separation = abs(latest['fast_ma'] - latest['slow_ma'])
+            price_trend_separation = abs(latest['close'] - latest['trend_ma'])
+            
+            # Calculate ATR for relative strength measurement
+            atr = self.ta.calculate_atr(daily_data).iloc[-1]
+            
+            if fast_slow_separation > atr * 0.5 and price_trend_separation > atr * 0.3:
+                strength = 'STRONG'
+            elif fast_slow_separation > atr * 0.2:
+                strength = 'MEDIUM'
+            else:
+                strength = 'WEAK'
+            
+            return {
+                'bias': trend_bias,
+                'strength': strength,
+                'fast_ma': latest['fast_ma'],
+                'slow_ma': latest['slow_ma'],
+                'trend_ma': latest['trend_ma'],
+                'current_price': latest['close'],
+                'atr': atr
+            }
+            
+        except Exception as e:
+            print(f"Error in analyze_trend_bias: {e}")
+            return {
+                'bias': 'NEUTRAL', 
+                'strength': 'WEAK',
+                'fast_ma': 0.0,
+                'slow_ma': 0.0,
+                'trend_ma': 0.0,
+                'current_price': 0.0,
+                'atr': 0.0
+            }
     
     def identify_zones(self, h4_data: pd.DataFrame) -> Dict:
         """

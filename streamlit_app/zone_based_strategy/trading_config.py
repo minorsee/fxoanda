@@ -268,16 +268,18 @@ def use_original_settings():
 # Default to balanced settings
 use_aggressive_settings()  # Uncomment to apply automatically
 
-# XXX_USD pairs only
+# Major pairs to analyze
 MAJOR_PAIRS = [
-    "EUR_USD", "GBP_USD", "AUD_USD", "NZD_USD"
+    "EUR_USD", "GBP_USD", 
+    "USD_JPY", "USD_CHF", "AUD_USD", 
+    "USD_CAD", "NZD_USD"
 ]
 
 # === DATA PARAMETERS ===
 # Number of candles to fetch for analysis
 CANDLE_COUNT = {
-    "D": 100,   # Daily
-    "H4": 200,  # 4-hour  
+    "D": 250,   # Daily - increased to support 200 MA
+    "H4": 250,  # 4-hour  
     "H1": 500   # 1-hour
 }
 
