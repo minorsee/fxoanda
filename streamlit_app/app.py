@@ -531,34 +531,6 @@ def main():
             st.session_state.sent_signals = {}
             st.sidebar.success("Signal history cleared - will resend emails for new identical signals")
         
-        # Show signal history for debugging
-        if st.sidebar.checkbox("Show Signal History", value=False):
-            if 'sent_signals' in st.session_state and st.session_state.sent_signals:
-                st.sidebar.write("**Last Sent Signals:**")
-                for pair, signal_data in st.session_state.sent_signals.items():
-                    st.sidebar.write(f"{pair}: {signal_data['signal']}")
-                    st.sidebar.write(f"  Entry: {signal_data['entry_price']}")
-            else:
-                st.sidebar.write("No signals sent yet")
-    
-    # Email logs section
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("📋 Email Logs")
-    
-    if 'email_logs' not in st.session_state:
-        st.session_state.email_logs = []
-    
-    if st.session_state.email_logs:
-        # Show last 5 logs
-        for log in st.session_state.email_logs[-5:]:
-            st.sidebar.write(log)
-        
-        if st.sidebar.button("🗑️ Clear Logs"):
-            st.session_state.email_logs = []
-            st.sidebar.success("Logs cleared")
-    else:
-        st.sidebar.write("No logs yet")
-    
     # Initialize email notifier if enabled with session state persistence
     email_notifier = None
     if enable_email_notifications:

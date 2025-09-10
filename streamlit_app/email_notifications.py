@@ -12,8 +12,6 @@ class EmailNotifier:
         self.smtp_server = "smtp.gmail.com"
         self.port = 587
         self.sheet_name = "Trading Signal History"
-        self.sent_signals = {}  # Will be loaded from Google Sheets
-        self.load_sent_signals_from_sheets()
     
     def get_google_sheets_client(self):
         """Initialize Google Sheets client using service account credentials"""
@@ -158,59 +156,43 @@ class EmailNotifier:
     def send_signal_notification(self, pair, signal, confidence, entry_price, take_profit=None, stop_loss=None):
         """Send email notification for high confidence trading signal"""
         
-        # Create signal state dictionary for comparison with timestamp
-        current_signal = {
-            'pair': pair,
-            'signal': signal,
-            'entry_price': round(entry_price, 5) if entry_price else None,
-            'take_profit': round(take_profit, 5) if take_profit else None,
-            'stop_loss': round(stop_loss, 5) if stop_loss else None,
-            'timestamp': datetime.now().isoformat(),
-            'confidence': confidence
-        }
-        
-        # Check DIRECTLY against Google Sheets (not in-memory cache)
-        current_direction = "BULLISH" if "BULLISH" in signal else "BEARISH"
+        # Simple check: Does this exact signal exist in Google Sheets today?
+        current_direction = "BULLISH" if "BULLISH" in signal else "BEARISH" 
         current_date = datetime.now().date().isoformat()
+        current_entry = round(entry_price, 5) if entry_price else None
+        current_tp = round(take_profit, 5) if take_profit else None
+        current_sl = round(stop_loss, 5) if stop_loss else None
         
         try:
             client = self.get_google_sheets_client()
-            if client:
-                sheet = client.open(self.sheet_name).sheet1
-                records = sheet.get_all_records()
+            if not client:
+                return False, "Cannot connect to Google Sheets"
                 
-                # Check each record in Google Sheets directly
-                for record in records:
-                    if not record.get('Pair'):
-                        continue
-                        
-                    if record['Pair'] == pair:
-                        prev_direction = "BULLISH" if "BULLISH" in record.get('Signal', '') else "BEARISH"
-                        prev_entry = float(record.get('Entry Price', 0)) if record.get('Entry Price') else None
-                        prev_tp = float(record.get('Take Profit', 0)) if record.get('Take Profit') else None
-                        prev_sl = float(record.get('Stop Loss', 0)) if record.get('Stop Loss') else None
-                        prev_date = record.get('Date', '')  # Direct date column
-                        
-                        # Check if ALL criteria match (using separate Date column)
-                        if (prev_direction == current_direction and
-                            prev_entry == current_signal['entry_price'] and
-                            prev_tp == current_signal['take_profit'] and
-                            prev_sl == current_signal['stop_loss'] and
-                            prev_date == current_date):
-                            
-                            # Log the block
-                            if hasattr(st, 'session_state'):
-                                if 'email_logs' not in st.session_state:
-                                    st.session_state.email_logs = []
-                                st.session_state.email_logs.append(f"🚫 Blocked: {current_direction} {pair} already sent today")
-                            
-                            return False, f"Duplicate blocked: {current_direction} {pair} already sent today"
+            # Create sheet if doesn't exist
+            try:
+                sheet = client.open(self.sheet_name).sheet1
+            except gspread.SpreadsheetNotFound:
+                spreadsheet = client.create(self.sheet_name)
+                sheet = spreadsheet.sheet1
+                headers = [['Pair', 'Signal', 'Entry Price', 'Take Profit', 'Stop Loss', 'Date', 'Time', 'Confidence']]
+                sheet.update('A1:H1', headers)
+            
+            # Check if exact match exists in sheet
+            records = sheet.get_all_records()
+            for record in records:
+                if (record.get('Pair') == pair and
+                    record.get('Date') == current_date and
+                    ("BULLISH" if "BULLISH" in record.get('Signal', '') else "BEARISH") == current_direction and
+                    float(record.get('Entry Price', 0)) == current_entry and
+                    float(record.get('Take Profit', 0)) == current_tp and
+                    float(record.get('Stop Loss', 0)) == current_sl):
+                    
+                    return False, f"Already sent: {current_direction} {pair} @ {current_entry} today"
+            
+            # No match found - send email and save to sheet
+            
         except Exception as e:
-            # If Google Sheets check fails, allow email (fail-safe)
-            if hasattr(st, 'session_state'):
-                if 'email_logs' not in st.session_state:
-                    st.session_state.email_logs = []
-                st.session_state.email_logs.append(f"⚠️ Sheet check failed: {str(e)[:30]}... - allowing email")
+            return False, f"Sheet error: {str(e)}"
         
         sender_email, sender_password, recipient_email = self.get_email_config()
         
@@ -305,13 +287,19 @@ class EmailNotifier:
                 text = message.as_string()
                 server.sendmail(sender_email, recipient_email, text)
             
-            # Track this signal and save to Google Sheets
-            self.sent_signals[pair] = current_signal
-            self.save_signal_to_sheets(pair, current_signal)
-            
-            # Also save to streamlit session state for UI display
-            if 'sent_signals' in st.session_state:
-                st.session_state.sent_signals = self.sent_signals
+            # Save this signal to Google Sheets
+            now = datetime.now()
+            row = [
+                pair,
+                signal,
+                current_entry or '',
+                current_tp or '',
+                current_sl or '',
+                current_date,
+                now.time().strftime('%H:%M:%S'),
+                confidence
+            ]
+            sheet.append_row(row)
             
             return True, "Email notification sent successfully"
             
