@@ -177,26 +177,37 @@ class EmailNotifier:
                 headers = [['Pair', 'Signal', 'Entry Price', 'Take Profit', 'Stop Loss', 'Date', 'Time', 'Confidence']]
                 sheet.update('A1:H1', headers)
             
-            # Check if exact match exists in sheet (only check: pair, entry, tp, sl, date)
-            records = sheet.get_all_records()
+            # Get all values (not records) to work with column positions
+            all_values = sheet.get_all_values()
             
             # DEBUG: Show what we're looking for
             st.write(f"🔍 **CHECKING:** {pair} @ {current_entry} | TP:{current_tp} | SL:{current_sl} | Date:{current_date}")
-            st.write(f"📋 **FOUND {len(records)} records in sheet**")
+            st.write(f"📋 **FOUND {len(all_values)} rows in sheet**")
             
-            for i, record in enumerate(records):
+            # Column positions: A=0(Pair), B=1(Signal), C=2(Entry), D=3(TP), E=4(SL), F=5(Date), G=6(Time), H=7(Confidence)
+            for i, row in enumerate(all_values):
+                if i == 0:  # Skip header row if exists
+                    continue
+                if len(row) < 6:  # Need at least 6 columns
+                    continue
+                    
                 try:
-                    # Get values from sheet
-                    sheet_pair = record.get('Pair', '')
-                    sheet_date = record.get('Date', '')
-                    sheet_entry = round(float(record.get('Entry Price', 0)), 5) if record.get('Entry Price') else None
-                    sheet_tp = round(float(record.get('Take Profit', 0)), 5) if record.get('Take Profit') else None  
-                    sheet_sl = round(float(record.get('Stop Loss', 0)), 5) if record.get('Stop Loss') else None
+                    # Get values by column position
+                    sheet_pair = row[0] if len(row) > 0 else ''      # Column A
+                    sheet_entry_str = row[2] if len(row) > 2 else '' # Column C  
+                    sheet_tp_str = row[3] if len(row) > 3 else ''    # Column D
+                    sheet_sl_str = row[4] if len(row) > 4 else ''    # Column E
+                    sheet_date = row[5] if len(row) > 5 else ''      # Column F
                     
-                    # DEBUG: Show each comparison
-                    st.write(f"Row {i+1}: {sheet_pair} @ {sheet_entry} | TP:{sheet_tp} | SL:{sheet_sl} | Date:{sheet_date}")
+                    # DEBUG: Show raw row data
+                    st.write(f"Row {i}: '{sheet_pair}' | '{sheet_entry_str}' | '{sheet_tp_str}' | '{sheet_sl_str}' | '{sheet_date}'")
                     
-                    # Check if ALL 5 criteria match: pair + entry + tp + sl + date
+                    # Convert to numbers
+                    sheet_entry = round(float(sheet_entry_str), 5) if sheet_entry_str and sheet_entry_str != '' else None
+                    sheet_tp = round(float(sheet_tp_str), 5) if sheet_tp_str and sheet_tp_str != '' else None  
+                    sheet_sl = round(float(sheet_sl_str), 5) if sheet_sl_str and sheet_sl_str != '' else None
+                    
+                    # Check if ALL 5 criteria match
                     if (sheet_pair == pair and
                         sheet_entry == current_entry and
                         sheet_tp == current_tp and
@@ -206,9 +217,9 @@ class EmailNotifier:
                         st.write(f"🚫 **MATCH FOUND - BLOCKING EMAIL**")
                         return False, f"Duplicate: {pair} @ {current_entry} already sent {current_date}"
                         
-                except (ValueError, TypeError):
-                    st.write(f"Row {i+1}: Invalid data - skipping")
-                    continue  # Skip invalid rows
+                except (ValueError, TypeError, IndexError) as e:
+                    st.write(f"Row {i}: Error - {e}")
+                    continue
             
             st.write(f"✅ **NO MATCH FOUND - SENDING EMAIL**")
             
