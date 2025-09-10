@@ -179,7 +179,12 @@ class EmailNotifier:
             
             # Check if exact match exists in sheet (only check: pair, entry, tp, sl, date)
             records = sheet.get_all_records()
-            for record in records:
+            
+            # DEBUG: Show what we're looking for
+            st.write(f"🔍 **CHECKING:** {pair} @ {current_entry} | TP:{current_tp} | SL:{current_sl} | Date:{current_date}")
+            st.write(f"📋 **FOUND {len(records)} records in sheet**")
+            
+            for i, record in enumerate(records):
                 try:
                     # Get values from sheet
                     sheet_pair = record.get('Pair', '')
@@ -188,6 +193,9 @@ class EmailNotifier:
                     sheet_tp = round(float(record.get('Take Profit', 0)), 5) if record.get('Take Profit') else None  
                     sheet_sl = round(float(record.get('Stop Loss', 0)), 5) if record.get('Stop Loss') else None
                     
+                    # DEBUG: Show each comparison
+                    st.write(f"Row {i+1}: {sheet_pair} @ {sheet_entry} | TP:{sheet_tp} | SL:{sheet_sl} | Date:{sheet_date}")
+                    
                     # Check if ALL 5 criteria match: pair + entry + tp + sl + date
                     if (sheet_pair == pair and
                         sheet_entry == current_entry and
@@ -195,10 +203,14 @@ class EmailNotifier:
                         sheet_sl == current_sl and
                         sheet_date == current_date):
                         
+                        st.write(f"🚫 **MATCH FOUND - BLOCKING EMAIL**")
                         return False, f"Duplicate: {pair} @ {current_entry} already sent {current_date}"
                         
                 except (ValueError, TypeError):
+                    st.write(f"Row {i+1}: Invalid data - skipping")
                     continue  # Skip invalid rows
+            
+            st.write(f"✅ **NO MATCH FOUND - SENDING EMAIL**")
             
             # No match found - send email and save to sheet
             
