@@ -186,7 +186,8 @@ class EmailNotifier:
             
             # Column positions: A=0(Pair), B=1(Signal), C=2(Entry), D=3(TP), E=4(SL), F=5(Date), G=6(Time), H=7(Confidence)
             for i, row in enumerate(all_values):
-                if i == 0:  # Skip header row if exists
+                # Skip header row if it contains header text
+                if i == 0 and len(row) > 0 and row[0] == 'Pair':
                     continue
                 if len(row) < 6:  # Need at least 6 columns
                     continue
