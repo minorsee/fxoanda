@@ -181,11 +181,12 @@ class EmailNotifier:
         for prev_pair, prev_signal in self.sent_signals.items():
             if prev_pair == pair:  # Same pair
                 prev_direction = "BULLISH" if "BULLISH" in prev_signal['signal'] else "BEARISH"
+                # Extract only date part from previous signal timestamp
                 prev_date = datetime.fromisoformat(prev_signal['timestamp']).date().isoformat()
                 
                 st.write(f"🔧 **DEBUG:** Comparing with previous: {prev_direction} @ {prev_signal['entry_price']} | TP: {prev_signal['take_profit']} | SL: {prev_signal['stop_loss']} | Date: {prev_date}")
                 
-                # Check if ALL criteria match: pair + direction + entry + TP + SL + date
+                # Check if ALL criteria match: pair + direction + entry + TP + SL + date (NOT time)
                 if (prev_pair == pair and 
                     prev_direction == current_direction and
                     prev_signal['entry_price'] == current_signal['entry_price'] and
