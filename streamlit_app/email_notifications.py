@@ -154,6 +154,9 @@ class EmailNotifier:
     def send_signal_notification(self, pair, signal, confidence, entry_price, take_profit=None, stop_loss=None):
         """Send email notification for high confidence trading signal"""
         
+        # ALWAYS reload from Google Sheets before checking duplicates
+        self.load_sent_signals_from_sheets()
+        
         # Create signal state dictionary for comparison with timestamp
         current_signal = {
             'pair': pair,
@@ -166,13 +169,36 @@ class EmailNotifier:
         }
         
         # Check if this exact signal was already sent
-        if pair in self.sent_signals:
-            last_signal = self.sent_signals[pair]
-            if (last_signal['signal'] == current_signal['signal'] and 
-                last_signal['entry_price'] == current_signal['entry_price'] and
-                last_signal['take_profit'] == current_signal['take_profit'] and
-                last_signal['stop_loss'] == current_signal['stop_loss']):
-                return False, "Identical signal already sent - no duplicate email"
+        # Extract direction from signal (BULLISH or BEARISH)
+        current_direction = "BULLISH" if "BULLISH" in signal else "BEARISH"
+        current_date = datetime.now().date().isoformat()  # Just the date part (YYYY-MM-DD)
+        
+        st.write(f"🔧 **DEBUG:** Checking duplicates for {pair}")
+        st.write(f"🔧 **DEBUG:** Current: {current_direction} @ {current_signal['entry_price']} | TP: {current_signal['take_profit']} | SL: {current_signal['stop_loss']} | Date: {current_date}")
+        st.write(f"🔧 **DEBUG:** Loaded signals from sheet: {len(self.sent_signals)} pairs")
+        
+        # Check all previous signals for this pair
+        for prev_pair, prev_signal in self.sent_signals.items():
+            if prev_pair == pair:  # Same pair
+                prev_direction = "BULLISH" if "BULLISH" in prev_signal['signal'] else "BEARISH"
+                prev_date = datetime.fromisoformat(prev_signal['timestamp']).date().isoformat()
+                
+                st.write(f"🔧 **DEBUG:** Comparing with previous: {prev_direction} @ {prev_signal['entry_price']} | TP: {prev_signal['take_profit']} | SL: {prev_signal['stop_loss']} | Date: {prev_date}")
+                
+                # Check if ALL criteria match: pair + direction + entry + TP + SL + date
+                if (prev_pair == pair and 
+                    prev_direction == current_direction and
+                    prev_signal['entry_price'] == current_signal['entry_price'] and
+                    prev_signal['take_profit'] == current_signal['take_profit'] and
+                    prev_signal['stop_loss'] == current_signal['stop_loss'] and
+                    prev_date == current_date):
+                    
+                    st.write(f"🚫 **DEBUG:** EXACT DUPLICATE DETECTED - blocking email for {pair}")
+                    return False, f"Identical signal already sent today: {current_direction} {pair} @ {current_signal['entry_price']}"
+                else:
+                    st.write(f"🔧 **DEBUG:** Signal is different - allowing email")
+        
+        st.write(f"✅ **DEBUG:** No duplicate found for {pair} - allowing email")
         
         sender_email, sender_password, recipient_email = self.get_email_config()
         
