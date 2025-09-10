@@ -4,46 +4,115 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 import streamlit as st
-import json
-import os
+import gspread
+from google.oauth2.service_account import Credentials
 
 class EmailNotifier:
     def __init__(self):
         self.smtp_server = "smtp.gmail.com"
         self.port = 587
-        self.sent_signals_file = "sent_signals.json"
-        self.sent_signals = self.load_sent_signals()  # Load from persistent storage
+        self.sheet_name = "Trading Signal History"
+        self.sent_signals = {}  # Will be loaded from Google Sheets
+        self.load_sent_signals_from_sheets()
     
-    def load_sent_signals(self):
-        """Load sent signals from persistent file storage"""
+    def get_google_sheets_client(self):
+        """Initialize Google Sheets client using service account credentials"""
         try:
-            if os.path.exists(self.sent_signals_file):
-                with open(self.sent_signals_file, 'r') as f:
-                    data = json.load(f)
-                    # Clean old signals (older than 24 hours)
-                    current_time = datetime.now()
-                    cleaned_data = {}
-                    
-                    for pair, signal_data in data.items():
-                        if 'timestamp' in signal_data:
-                            signal_time = datetime.fromisoformat(signal_data['timestamp'])
-                            # Keep signals from last 24 hours
-                            if (current_time - signal_time).total_seconds() < 86400:
-                                cleaned_data[pair] = signal_data
-                    
-                    return cleaned_data
-            return {}
+            # Get service account credentials from Streamlit secrets
+            service_account_info = st.secrets["gcp_service_account"]
+            
+            # Define the scope
+            scopes = [
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive"
+            ]
+            
+            # Create credentials
+            credentials = Credentials.from_service_account_info(
+                service_account_info, scopes=scopes
+            )
+            
+            # Initialize the client
+            client = gspread.authorize(credentials)
+            return client
+            
         except Exception as e:
-            print(f"Error loading sent signals: {e}")
-            return {}
+            print(f"Error initializing Google Sheets client: {e}")
+            return None
     
-    def save_sent_signals(self):
-        """Save sent signals to persistent file storage"""
+    def load_sent_signals_from_sheets(self):
+        """Load sent signals from Google Sheets"""
         try:
-            with open(self.sent_signals_file, 'w') as f:
-                json.dump(self.sent_signals, f, indent=2)
+            client = self.get_google_sheets_client()
+            if not client:
+                return
+            
+            # Try to open existing sheet or create new one
+            try:
+                sheet = client.open(self.sheet_name).sheet1
+            except gspread.SpreadsheetNotFound:
+                # Create new spreadsheet
+                sheet = client.create(self.sheet_name).sheet1
+                # Set up headers
+                sheet.update('A1:G1', [['Pair', 'Signal', 'Entry Price', 'Take Profit', 'Stop Loss', 'Timestamp', 'Confidence']])
+            
+            # Load all records
+            records = sheet.get_all_records()
+            current_time = datetime.now()
+            
+            for record in records:
+                if not record.get('Pair'):  # Skip empty rows
+                    continue
+                    
+                pair = record['Pair']
+                timestamp_str = record.get('Timestamp', '')
+                
+                # Only keep signals from last 24 hours
+                try:
+                    if timestamp_str:
+                        signal_time = datetime.fromisoformat(timestamp_str)
+                        if (current_time - signal_time).total_seconds() < 86400:
+                            self.sent_signals[pair] = {
+                                'signal': record.get('Signal', ''),
+                                'entry_price': float(record.get('Entry Price', 0)) if record.get('Entry Price') else None,
+                                'take_profit': float(record.get('Take Profit', 0)) if record.get('Take Profit') else None,
+                                'stop_loss': float(record.get('Stop Loss', 0)) if record.get('Stop Loss') else None,
+                                'timestamp': timestamp_str
+                            }
+                except Exception as e:
+                    print(f"Error parsing record for {pair}: {e}")
+                    continue
+                    
         except Exception as e:
-            print(f"Error saving sent signals: {e}")
+            print(f"Error loading sent signals from Google Sheets: {e}")
+    
+    def save_signal_to_sheets(self, pair, signal_data):
+        """Save new signal to Google Sheets"""
+        try:
+            client = self.get_google_sheets_client()
+            if not client:
+                return False
+                
+            sheet = client.open(self.sheet_name).sheet1
+            
+            # Prepare row data
+            row = [
+                pair,
+                signal_data['signal'],
+                signal_data['entry_price'] or '',
+                signal_data['take_profit'] or '',
+                signal_data['stop_loss'] or '',
+                signal_data['timestamp'],
+                signal_data.get('confidence', '')
+            ]
+            
+            # Add to sheet
+            sheet.append_row(row)
+            return True
+            
+        except Exception as e:
+            print(f"Error saving signal to Google Sheets: {e}")
+            return False
 
     def get_email_config(self):
         """Get email configuration from Streamlit secrets"""
@@ -69,7 +138,8 @@ class EmailNotifier:
             'entry_price': round(entry_price, 5) if entry_price else None,
             'take_profit': round(take_profit, 5) if take_profit else None,
             'stop_loss': round(stop_loss, 5) if stop_loss else None,
-            'timestamp': datetime.now().isoformat()
+            'timestamp': datetime.now().isoformat(),
+            'confidence': confidence
         }
         
         # Check if this exact signal was already sent
@@ -174,9 +244,9 @@ class EmailNotifier:
                 text = message.as_string()
                 server.sendmail(sender_email, recipient_email, text)
             
-            # Track this signal with full details and save persistently
+            # Track this signal and save to Google Sheets
             self.sent_signals[pair] = current_signal
-            self.save_sent_signals()  # Save to file for persistence across app restarts
+            self.save_signal_to_sheets(pair, current_signal)
             
             # Also save to streamlit session state for UI display
             if 'sent_signals' in st.session_state:

@@ -5,3 +5,5 @@ oandapyV20
 plotly
 python-dateutil
 matplotlib
+gspread
+google-auth
