@@ -59,8 +59,8 @@ class EmailNotifier:
                 sheet = spreadsheet.sheet1
                 
                 # Set up headers
-                headers = [['Pair', 'Signal', 'Entry Price', 'Take Profit', 'Stop Loss', 'Timestamp', 'Confidence']]
-                sheet.update('A1:G1', headers)
+                headers = [['Pair', 'Signal', 'Entry Price', 'Take Profit', 'Stop Loss', 'Date', 'Time', 'Confidence']]
+                sheet.update('A1:H1', headers)
                 
                 # Log sheet creation
                 if hasattr(st, 'session_state'):
@@ -109,14 +109,16 @@ class EmailNotifier:
                 
             sheet = client.open(self.sheet_name).sheet1
             
-            # Prepare row data
+            # Prepare row data with separate date and time columns
+            now = datetime.now()
             row = [
                 pair,
                 signal_data['signal'],
                 signal_data['entry_price'] or '',
                 signal_data['take_profit'] or '',
                 signal_data['stop_loss'] or '',
-                signal_data['timestamp'],
+                now.date().isoformat(),  # Date column (YYYY-MM-DD)
+                now.time().strftime('%H:%M:%S'),  # Time column (HH:MM:SS)
                 signal_data.get('confidence', '')
             ]
             
@@ -187,14 +189,9 @@ class EmailNotifier:
                         prev_entry = float(record.get('Entry Price', 0)) if record.get('Entry Price') else None
                         prev_tp = float(record.get('Take Profit', 0)) if record.get('Take Profit') else None
                         prev_sl = float(record.get('Stop Loss', 0)) if record.get('Stop Loss') else None
+                        prev_date = record.get('Date', '')  # Direct date column
                         
-                        # Extract date from timestamp
-                        try:
-                            prev_date = datetime.fromisoformat(record.get('Timestamp', '')).date().isoformat()
-                        except:
-                            continue
-                        
-                        # Check if ALL criteria match
+                        # Check if ALL criteria match (using separate Date column)
                         if (prev_direction == current_direction and
                             prev_entry == current_signal['entry_price'] and
                             prev_tp == current_signal['take_profit'] and
