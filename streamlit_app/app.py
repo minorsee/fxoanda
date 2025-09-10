@@ -436,9 +436,27 @@ def display_multi_pair_signals(email_notifier=None):
                 st.info(f"**{opp['pair']}:** {direction} @ {entry_formatted} "
                        f"({safe_format_percentage(opp['confidence'])} confidence) {trend_emoji}")
 
+def health_check():
+    """Health check endpoint to keep app alive"""
+    # Check if health check is requested via query params
+    query_params = st.experimental_get_query_params()
+    
+    if 'health' in query_params:
+        # Return JSON-like response for health check
+        st.json({
+            'status': 'healthy',
+            'timestamp': datetime.now().isoformat(),
+            'app_version': '1.0.0',
+            'uptime': 'active'
+        })
+        st.stop()  # Stop execution after health check
+
 def main():
     """Main Streamlit app with safe number formatting"""
     from safe_analysis import safe_format_number, safe_format_percentage
+    
+    # Handle health check first
+    health_check()
     
     # Header
     st.title("📈 Live Trading Signals Dashboard")

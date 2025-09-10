@@ -4,13 +4,47 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 import streamlit as st
+import json
+import os
 
 class EmailNotifier:
     def __init__(self):
         self.smtp_server = "smtp.gmail.com"
         self.port = 587
-        self.sent_signals = {}  # Track sent signals with full details to avoid duplicates
+        self.sent_signals_file = "sent_signals.json"
+        self.sent_signals = self.load_sent_signals()  # Load from persistent storage
     
+    def load_sent_signals(self):
+        """Load sent signals from persistent file storage"""
+        try:
+            if os.path.exists(self.sent_signals_file):
+                with open(self.sent_signals_file, 'r') as f:
+                    data = json.load(f)
+                    # Clean old signals (older than 24 hours)
+                    current_time = datetime.now()
+                    cleaned_data = {}
+                    
+                    for pair, signal_data in data.items():
+                        if 'timestamp' in signal_data:
+                            signal_time = datetime.fromisoformat(signal_data['timestamp'])
+                            # Keep signals from last 24 hours
+                            if (current_time - signal_time).total_seconds() < 86400:
+                                cleaned_data[pair] = signal_data
+                    
+                    return cleaned_data
+            return {}
+        except Exception as e:
+            print(f"Error loading sent signals: {e}")
+            return {}
+    
+    def save_sent_signals(self):
+        """Save sent signals to persistent file storage"""
+        try:
+            with open(self.sent_signals_file, 'w') as f:
+                json.dump(self.sent_signals, f, indent=2)
+        except Exception as e:
+            print(f"Error saving sent signals: {e}")
+
     def get_email_config(self):
         """Get email configuration from Streamlit secrets"""
         try:
@@ -28,13 +62,14 @@ class EmailNotifier:
     def send_signal_notification(self, pair, signal, confidence, entry_price, take_profit=None, stop_loss=None):
         """Send email notification for high confidence trading signal"""
         
-        # Create signal state dictionary for comparison
+        # Create signal state dictionary for comparison with timestamp
         current_signal = {
             'pair': pair,
             'signal': signal,
             'entry_price': round(entry_price, 5) if entry_price else None,
             'take_profit': round(take_profit, 5) if take_profit else None,
-            'stop_loss': round(stop_loss, 5) if stop_loss else None
+            'stop_loss': round(stop_loss, 5) if stop_loss else None,
+            'timestamp': datetime.now().isoformat()
         }
         
         # Check if this exact signal was already sent
@@ -139,10 +174,11 @@ class EmailNotifier:
                 text = message.as_string()
                 server.sendmail(sender_email, recipient_email, text)
             
-            # Track this signal with full details
+            # Track this signal with full details and save persistently
             self.sent_signals[pair] = current_signal
+            self.save_sent_signals()  # Save to file for persistence across app restarts
             
-            # Save to streamlit session state for persistence
+            # Also save to streamlit session state for UI display
             if 'sent_signals' in st.session_state:
                 st.session_state.sent_signals = self.sent_signals
             
