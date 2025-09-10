@@ -200,8 +200,6 @@ class EmailNotifier:
                     sheet_sl_str = row[4] if len(row) > 4 else ''    # Column E
                     sheet_date = row[5] if len(row) > 5 else ''      # Column F
                     
-                    # DEBUG: Show raw row data
-                    st.write(f"Row {i}: '{sheet_pair}' | '{sheet_entry_str}' | '{sheet_tp_str}' | '{sheet_sl_str}' | '{sheet_date}'")
                     
                     # Convert to numbers
                     sheet_entry = round(float(sheet_entry_str), 5) if sheet_entry_str and sheet_entry_str != '' else None
