@@ -18,8 +18,11 @@ class EmailNotifier:
     def get_google_sheets_client(self):
         """Initialize Google Sheets client using service account credentials"""
         try:
+            st.write("🔧 **DEBUG:** Attempting to initialize Google Sheets client...")
+            
             # Get service account credentials from Streamlit secrets
             service_account_info = st.secrets["gcp_service_account"]
+            st.write(f"✅ **DEBUG:** Service account credentials found: {service_account_info.get('client_email', 'No email found')}")
             
             # Define the scope
             scopes = [
@@ -31,33 +34,46 @@ class EmailNotifier:
             credentials = Credentials.from_service_account_info(
                 service_account_info, scopes=scopes
             )
+            st.write("✅ **DEBUG:** Credentials created successfully")
             
             # Initialize the client
             client = gspread.authorize(credentials)
+            st.write("✅ **DEBUG:** Google Sheets client authorized successfully")
             return client
             
         except Exception as e:
-            print(f"Error initializing Google Sheets client: {e}")
+            st.error(f"❌ **DEBUG:** Error initializing Google Sheets client: {e}")
             return None
     
     def load_sent_signals_from_sheets(self):
         """Load sent signals from Google Sheets"""
         try:
+            st.write("🔧 **DEBUG:** Loading sent signals from Google Sheets...")
             client = self.get_google_sheets_client()
             if not client:
+                st.error("❌ **DEBUG:** No Google Sheets client - cannot load signals")
                 return
             
             # Try to open existing sheet or create new one
             try:
+                st.write(f"🔧 **DEBUG:** Looking for existing sheet: '{self.sheet_name}'")
                 sheet = client.open(self.sheet_name).sheet1
+                st.write("✅ **DEBUG:** Found existing sheet!")
             except gspread.SpreadsheetNotFound:
+                st.write("🔧 **DEBUG:** Sheet not found, creating new one...")
                 # Create new spreadsheet
-                sheet = client.create(self.sheet_name).sheet1
+                spreadsheet = client.create(self.sheet_name)
+                sheet = spreadsheet.sheet1
+                st.write(f"✅ **DEBUG:** Created new sheet: {spreadsheet.url}")
+                
                 # Set up headers
-                sheet.update('A1:G1', [['Pair', 'Signal', 'Entry Price', 'Take Profit', 'Stop Loss', 'Timestamp', 'Confidence']])
+                headers = [['Pair', 'Signal', 'Entry Price', 'Take Profit', 'Stop Loss', 'Timestamp', 'Confidence']]
+                sheet.update('A1:G1', headers)
+                st.write("✅ **DEBUG:** Headers added to sheet")
             
             # Load all records
             records = sheet.get_all_records()
+            st.write(f"🔧 **DEBUG:** Loaded {len(records)} records from sheet")
             current_time = datetime.now()
             
             for record in records:
@@ -80,17 +96,21 @@ class EmailNotifier:
                                 'timestamp': timestamp_str
                             }
                 except Exception as e:
-                    print(f"Error parsing record for {pair}: {e}")
+                    st.error(f"❌ **DEBUG:** Error parsing record for {pair}: {e}")
                     continue
+            
+            st.write(f"✅ **DEBUG:** Loaded {len(self.sent_signals)} valid signals from last 24h")
                     
         except Exception as e:
-            print(f"Error loading sent signals from Google Sheets: {e}")
+            st.error(f"❌ **DEBUG:** Error loading sent signals from Google Sheets: {e}")
     
     def save_signal_to_sheets(self, pair, signal_data):
         """Save new signal to Google Sheets"""
         try:
+            st.write(f"🔧 **DEBUG:** Saving signal for {pair} to Google Sheets...")
             client = self.get_google_sheets_client()
             if not client:
+                st.error("❌ **DEBUG:** No Google Sheets client - cannot save signal")
                 return False
                 
             sheet = client.open(self.sheet_name).sheet1
@@ -106,12 +126,15 @@ class EmailNotifier:
                 signal_data.get('confidence', '')
             ]
             
+            st.write(f"🔧 **DEBUG:** Row data: {row}")
+            
             # Add to sheet
             sheet.append_row(row)
+            st.write(f"✅ **DEBUG:** Signal saved to sheet successfully!")
             return True
             
         except Exception as e:
-            print(f"Error saving signal to Google Sheets: {e}")
+            st.error(f"❌ **DEBUG:** Error saving signal to Google Sheets: {e}")
             return False
 
     def get_email_config(self):
