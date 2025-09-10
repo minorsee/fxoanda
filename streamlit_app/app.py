@@ -439,7 +439,7 @@ def display_multi_pair_signals(email_notifier=None):
 def health_check():
     """Health check endpoint to keep app alive"""
     # Check if health check is requested via query params
-    query_params = st.experimental_get_query_params()
+    query_params = st.query_params
     
     if 'health' in query_params:
         # Return JSON-like response for health check
