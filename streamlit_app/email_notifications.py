@@ -177,17 +177,28 @@ class EmailNotifier:
                 headers = [['Pair', 'Signal', 'Entry Price', 'Take Profit', 'Stop Loss', 'Date', 'Time', 'Confidence']]
                 sheet.update('A1:H1', headers)
             
-            # Check if exact match exists in sheet
+            # Check if exact match exists in sheet (only check: pair, entry, tp, sl, date)
             records = sheet.get_all_records()
             for record in records:
-                if (record.get('Pair') == pair and
-                    record.get('Date') == current_date and
-                    ("BULLISH" if "BULLISH" in record.get('Signal', '') else "BEARISH") == current_direction and
-                    float(record.get('Entry Price', 0)) == current_entry and
-                    float(record.get('Take Profit', 0)) == current_tp and
-                    float(record.get('Stop Loss', 0)) == current_sl):
+                try:
+                    # Get values from sheet
+                    sheet_pair = record.get('Pair', '')
+                    sheet_date = record.get('Date', '')
+                    sheet_entry = round(float(record.get('Entry Price', 0)), 5) if record.get('Entry Price') else None
+                    sheet_tp = round(float(record.get('Take Profit', 0)), 5) if record.get('Take Profit') else None  
+                    sheet_sl = round(float(record.get('Stop Loss', 0)), 5) if record.get('Stop Loss') else None
                     
-                    return False, f"Already sent: {current_direction} {pair} @ {current_entry} today"
+                    # Check if ALL 5 criteria match: pair + entry + tp + sl + date
+                    if (sheet_pair == pair and
+                        sheet_entry == current_entry and
+                        sheet_tp == current_tp and
+                        sheet_sl == current_sl and
+                        sheet_date == current_date):
+                        
+                        return False, f"Duplicate: {pair} @ {current_entry} already sent {current_date}"
+                        
+                except (ValueError, TypeError):
+                    continue  # Skip invalid rows
             
             # No match found - send email and save to sheet
             

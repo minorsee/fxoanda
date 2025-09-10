@@ -526,11 +526,6 @@ def main():
                 st.sidebar.error(f"❌ {message}")
                 st.sidebar.info("Set email credentials in Streamlit secrets: SENDER_EMAIL, SENDER_PASSWORD, RECIPIENT_EMAIL")
         
-        # Clear sent signals state
-        if st.sidebar.button("🗑️ Clear Signal History"):
-            st.session_state.sent_signals = {}
-            st.sidebar.success("Signal history cleared - will resend emails for new identical signals")
-        
     # Initialize email notifier if enabled with session state persistence
     email_notifier = None
     if enable_email_notifications:
